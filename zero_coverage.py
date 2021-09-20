@@ -13,7 +13,7 @@ class Coverage():
     """
 
     def get_coverage(self,path):
-        """This function calucaltes coverage using samtools depth.
+        """This function calculates coverage using samtools depth.
         Depending on the size of the bam file this can take a while
         and you may want to run it on a cluster. The flag "-J" is used
         which means that deletions in reads count as coverage.
@@ -25,14 +25,35 @@ class Coverage():
         self.coverage = pd.read_csv(StringIO(process.stdout.decode()),sep='\t')
         self.coverage.columns=['chromosome','position','coverage']
 
-    def get_zero_coverage_length(self,zero_coverage):
-        pass
+    def get_length(self):
+        #Splitting df in dictionary with contigs as keys
+        zero_coverage = {chromosome:list() for chromosome in set(c.zero_coverage['chromosome'])}
+        for chromosome,pos in zip(self.zero_coverage['chromosome'],self.zero_coverage['position']):
+            zero_coverage[chromosome].append(pos)
+        start_positions = dict()
+        for chromosome,positions in zero_coverage.items():
+            start_position = positions[0]
+            start_positions[start_position] = 1
+            previous_position = start_position
+            for pos in positions[1:]:
+                if previous_position + 1 == pos:
+                    start_positions[start_position] += 1
+                    previous_position = pos
+                else:
+                    start_position = pos
+                    start_positions[start_position] = 1
+                    previous_position = pos
+        return zero_coverage
 
     def get_zero_coverage(self):
-        df = self.coverage[self.coverage['coverage'] == 0]
-
+        """Hero we get all positions with zero reads aligned.
+        """
+        self.zero_coverage = self.coverage[self.coverage['coverage'] == 0]
 
 
 c = Coverage()
-c.get_coverage('testdata/mapped_reads.sorted.bam')
+c.get_coverage('testdata/at/mapped_reads.sorted.bam')
+c.get_zero_coverage()
+z = c.get_length()
+
 
