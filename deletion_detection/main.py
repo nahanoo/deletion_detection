@@ -1,6 +1,6 @@
 import argparse
 from deletion_detection import Deletion
-from no_alignment import NoAlignment
+from deletion_detection import NoAlignment
 
 def parse_args():
     """Parsing required and optional arguemtns."""
