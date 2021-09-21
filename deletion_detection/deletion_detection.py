@@ -1,5 +1,6 @@
 import pysam
 import pandas as pd
+import os
 
 class Deletion():
     def get_deletions(self,path):
@@ -65,5 +66,5 @@ class Deletion():
             df.at[counter,'length'] = length
             df.at[counter,'count'] = count_coverage[0]
             df.at[counter,'coverage'] = count_coverage[1]
-            df.at[counter,'type'] = 'In-read deletion'
-        df.to_csv(out,index=False,sep='\t')
+            df.at[counter,'type'] = 'in-read deletion'
+        df.to_csv(os.path.join(out,'in_read_deletions.tsv'),index=False,sep='\t')
