@@ -3,7 +3,7 @@ from io import StringIO
 import pandas as pd
 import subprocess
 
-class Coverage():
+class No_alignment():
     """This class is used to detect areas with zero coverage.
     This is useful if you want to find plasmids or large 
     genomic regions which were potentially deleted, something
@@ -25,35 +25,43 @@ class Coverage():
         self.coverage = pd.read_csv(StringIO(process.stdout.decode()),sep='\t')
         self.coverage.columns=['chromosome','position','coverage']
 
-    def get_length(self):
-        #Splitting df in dictionary with contigs as keys
-        zero_coverage = {chromosome:list() for chromosome in set(c.zero_coverage['chromosome'])}
-        for chromosome,pos in zip(self.zero_coverage['chromosome'],self.zero_coverage['position']):
-            zero_coverage[chromosome].append(pos)
-        start_positions = dict()
-        for chromosome,positions in zero_coverage.items():
-            start_position = positions[0]
-            start_positions[start_position] = 1
-            previous_position = start_position
-            for pos in positions[1:]:
-                if previous_position + 1 == pos:
-                    start_positions[start_position] += 1
-                    previous_position = pos
-                else:
-                    start_position = pos
-                    start_positions[start_position] = 1
-                    previous_position = pos
-        return start_positions
-
-    def get_zero_coverage(self):
+    def get_no_alignment(self):
         """Hero we get all positions with zero reads aligned.
         """
-        self.zero_coverage = self.coverage[self.coverage['coverage'] == 0]
+        return self.coverage[self.coverage['coverage'] == 0]
+
+    def get_unaligned_length(self,no_alignment_df):
+        """This function detects the length of the unaligned region. 
+        It does it by walking up the unaligned region based on a starting position
+        and increasing the count of the length if the position is increased by one.
+        """
+        #For convenience we group the no alignment df as dictionary.
+        no_alignment = {chromosome:list() for chromosome in set(no_alignment_df['chromosome'])}
+        for chromosome,position in zip(no_alignment_df['chromosome'],no_alignment_df['position']):
+            no_alignment[chromosome].append(position)
+
+        #All starting positions are stored in a dictionary.
+        #Values are the length of the continuous no alignment region.
+        start_positions = dict()
+        for chromosome,positions in no_alignment.items():
+            #For every chromosome the first base is always the first
+            #starting position.
+            start_position = positions[0]
+            start_positions[(chromosome,start_position)] = 1
+            for position in positions[1:]:
+                #If the no alignment region is continuous the length counter in increased.
+                if start_position + start_positions[(chromosome,start_position)] == position:
+                    start_positions[(chromosome,start_position)] += 1
+                else:
+                    #If not continuous new starting position is defined.
+                    start_position = position
+                    start_positions[(chromosome,start_position)] = 1
+        self.no_alignment = start_positions
 
 
-c = Coverage()
+"""c = No_alignment()
 c.get_coverage('testdata/at/mapped_reads.sorted.bam')
-c.get_zero_coverage()
-start_positions = c.get_length()
-
+df = c.get_no_alignment()
+start_positions = c.get_unaligned_length(df)
+"""
 
