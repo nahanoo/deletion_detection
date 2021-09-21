@@ -1,6 +1,9 @@
 import argparse
+from deletion_detection import Deletion
+from no_alignment import NoAlignment
 
 def parse_args():
+    """Parsing required and optional arguemtns."""
     parser = argparse.ArgumentParser(description='Deletion detection based on sorted BAM files.\
         By default it only detects deletions which are located in reads.\
         Adding the --output_no_alignment_regions will also output the regions\
@@ -10,9 +13,42 @@ def parse_args():
     parser.add_argument('output_dir',help='ouput direcotry.')
     parser.add_argument('--output_no_alignment_regions',required=False,action='store_true',help='outputs the regions\
         in the reference where no reads aligned. This feature requires SAMtools>=1.11 in your PATH.')
+    parser.add_argument('--min_counts',type=int,help='minimal observed reads with the deletion [default is 5]')
+    parser.add_argument('--min_frequency',type=float,help='minimal observed frequency of deletion (observed reads with\
+        deletion divided by coverage) [default is 5]')
     return parser.parse_args()
 
 def main():
     args = parse_args()
-
-args = parse_args()
+    #Setting default values for min_counts and min_frequency if not specified
+    if args.min_counts is None:
+        args.min_counts = 5
+    if args.min_frequency is None:
+        args.min_frequency = 0.8
+    #Output in-read deletions
+    if not args.output_no_alignment_regions:
+        d = Deletion()
+        #Get all in-read deletions
+        d.get_deletions(args.bam_file)
+        #Apply filter
+        d.filter_deletions(args.min_counts,args.min_frequency)
+        #Write to tsv
+        d.write_deletions(args.output_dir)
+    #Additionally to in-read deletions output also no alignment regions (if requested with flag)
+    if args.output_no_alignment_regions:
+        d = Deletion()
+        #Get all in-read deletions
+        d.get_deletions(args.bam_file)
+        #Apply filter
+        d.filter_deletions(args.min_counts,args.min_frequency)
+        #Write in-read deletions to tsv
+        d.write_deletions(args.output_dir)
+        n = NoAlignment()
+        #Get entire coverage
+        n.get_coverage(args.bam_file)
+        df = n.get_no_alignment()
+        #Get regions with 0 coverage.
+        #Samtools depth -J is used so in read deletions are counted as coverage.
+        n.get_unaligned_length(df)
+        #Write to tsv
+        n.write_no_alignments(args.output_dir)
