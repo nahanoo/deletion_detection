@@ -43,7 +43,7 @@ class Coverage():
                     start_position = pos
                     start_positions[start_position] = 1
                     previous_position = pos
-        return zero_coverage
+        return start_positions
 
     def get_zero_coverage(self):
         """Hero we get all positions with zero reads aligned.
@@ -54,6 +54,6 @@ class Coverage():
 c = Coverage()
 c.get_coverage('testdata/at/mapped_reads.sorted.bam')
 c.get_zero_coverage()
-z = c.get_length()
+start_positions = c.get_length()
 
 
