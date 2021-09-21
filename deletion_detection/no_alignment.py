@@ -3,7 +3,7 @@ from io import StringIO
 import pandas as pd
 import subprocess
 
-class No_alignment():
+class NoAlignment():
     """This class is used to detect areas with zero coverage.
     This is useful if you want to find plasmids or large 
     genomic regions which were potentially deleted, something
