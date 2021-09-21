@@ -34,11 +34,12 @@ class Deletion():
                 elif block_type == 2:
                     #Deletion is stored in dictionary.
                     #Values are ([count,coverage],length)
-                    if (read.reference_name,read.pos+block_pos) in self.deletions.keys():
-                        self.deletions[(read.reference_name,read.pos+block_pos)][0][0] += 1
+                    #pysam is 0 index based, to make it compareable with samtools I switched to 1 indexing for storing.
+                    if (read.reference_name,read.pos+block_pos+1) in self.deletions.keys():
+                        self.deletions[(read.reference_name,read.pos+block_pos+1)][0][0] += 1
                     else:
                         coverage = alignment.count(read.reference_name,read.pos+block_pos,read.pos+block_pos+1)
-                        self.deletions[(read.reference_name,read.pos+block_pos)] = ([1,coverage],block_len)
+                        self.deletions[(read.reference_name,read.pos+block_pos+1)] = ([1,coverage],block_len)
                     block_pos += block_len
                 #3 is skipped region from the reference
                 elif block_type == 3:
