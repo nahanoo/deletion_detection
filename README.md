@@ -3,15 +3,14 @@
 ## Introduction
 
 This is a very simple deletion detector for haploid genomes.  
-As an input it uses sorted BAM files. Using `pysam` this tool iterates over every read in the Alignment file. The CIGAR code of every read is checked for deletions. Every position and how many times this deletion was found is stored. Additionally the coverage at given position is stored.  
-All deletions are then filtered for `--min_counts` and `--min_frequency`. If no values are specified using those flags default min_count is 5 and default min_frequency is 0.8.  
+As an input it uses sorted BAM files. Using `pysam` this tool iterates over every read in the Alignment file. The CIGAR code of every read is checked for deletions. Every position and how many times this deletion was found is stored as well as the coverage at given position.  
+All deletions are then filtered for `--min_counts` and `--min_frequency`. If no values are specified using those flags default min_counts is 5 and default min_frequency is 0.8.  
 If specified with `--output_no_alignment_regions` all regions with no read alignments are outputted additionally to in-read deletions.
 Note that this feature requires SAMtools>=1.11 in your PATH. 
-In-read deletion detection for haploid genomes.
 
 ## Installation
 
-This package can be used using pip. Since it is still in testing it is not available on PyPi yet.
+This package can be installed using pip. Since it is still in testing it is not available on PyPi yet.
 ```
 git clone git@github.com:nahanoo/deletion_detection.git
 cd deletion_detection
@@ -20,8 +19,7 @@ pip install .
 
 ## Usage
 
-The tool can then be called using  
-`deletion_detection BAMFILE OUTPUTDIR`
+The tool can then be called using `deletion_detection BAMFILE OUTPUTDIR`
 
 Help page called with `deletion_detection -h`:
 ```
