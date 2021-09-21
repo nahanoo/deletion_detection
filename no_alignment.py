@@ -68,12 +68,3 @@ class No_alignment():
             df.at[counter,'length'] = length
             df.at[counter,'type'] = 'No alignment region'
         df.to_csv(out,index=False,sep='\t')
-
-"""
-c = No_alignment()
-c.get_coverage('testdata/at/mapped_reads.sorted.bam')
-df = c.get_no_alignment()
-c.get_unaligned_length(df)
-c.write_no_alignments('./tmp.tsv')
-"""
-
