@@ -5,7 +5,12 @@ setup(name='deltec',
       description='Detects deletion and regions with no alignments in BAM file derived from haploid genomes.',
       author='Eric Ulrich',
       url='https://github.com/nahanoo/deletion_detection',
-      packages=find_packages(),
+      packages=['deletion_detection'],
       install_requires=['pandas',
-                        'pysam']
+                        'pysam'],
+      entry_points={
+          'console_scripts': [
+              'detect_deletions = deletion_detection.main:main'
+          ]
+      }
      )
