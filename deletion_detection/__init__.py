@@ -1,2 +1,2 @@
-from .no_alignment import No_alignment
+from .no_alignment import NoAlignment
 from .deletion_detection import Deletion
