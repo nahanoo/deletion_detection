@@ -2,6 +2,7 @@ import pysam
 from io import StringIO
 import pandas as pd
 import subprocess
+import os
 
 class NoAlignment():
     """This class is used to detect areas with zero coverage.
@@ -66,5 +67,5 @@ class NoAlignment():
             df.at[counter,'chromosome'] = chromosome
             df.at[counter,'position'] = position
             df.at[counter,'length'] = length
-            df.at[counter,'type'] = 'No alignment region'
-        df.to_csv(out,index=False,sep='\t')
+            df.at[counter,'type'] = 'no alignment region'
+        df.to_csv(os.path.join(out,'no_alignment_regions.tsv'),index=False,sep='\t')
