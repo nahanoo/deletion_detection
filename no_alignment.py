@@ -18,6 +18,7 @@ class No_alignment():
         and you may want to run it on a cluster. The flag "-J" is used
         which means that deletions in reads count as coverage.
         Therefore coverage is only zero in areas where no reads align.
+        This function requires that samtools>=1.11 is in your PATH variable.
         """
         self.bamfile_path = path
         cmd = ['samtools','depth','-a','-J',self.bamfile_path]
@@ -58,10 +59,21 @@ class No_alignment():
                     start_positions[(chromosome,start_position)] = 1
         self.no_alignment = start_positions
 
+    def write_no_alignments(self,out):
+        """This function writes detected no alignment regions to tsv."""
+        df = pd.DataFrame(columns=['chromosome','position','length','type'],index=range(len(self.no_alignment.values())))
+        for counter,((chromosome,position),length) in enumerate(self.no_alignment.items()):
+            df.at[counter,'chromosome'] = chromosome
+            df.at[counter,'position'] = position
+            df.at[counter,'length'] = length
+            df.at[counter,'type'] = 'No alignment region'
+        df.to_csv(out,index=False,sep='\t')
 
-"""c = No_alignment()
+"""
+c = No_alignment()
 c.get_coverage('testdata/at/mapped_reads.sorted.bam')
 df = c.get_no_alignment()
-start_positions = c.get_unaligned_length(df)
+c.get_unaligned_length(df)
+c.write_no_alignments('./tmp.tsv')
 """
 
