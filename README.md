@@ -7,7 +7,7 @@ As an input it uses sorted BAM files. Using `pysam` this tool iterates over ever
 All deletions are then filtered for `--min_counts` and `--min_frequency`. If no values are specified using those flags default min_counts is 5 and default min_frequency is 0.8.  
 If specified with `--output_no_alignment_regions` all regions with no read alignments are outputted additionally to in-read deletions.
 Note that this feature requires SAMtools>=1.11 in your PATH.  
-This tool was tested with PacBio HiFi data using [minimap2](https://github.com/lh3/minimap2) for alignment. For detecting shor deletion this tool should also work well with Illumina data. Uncorrected nanopore reads could be a bit more tricky because of the indel issues that come with nanopore data. It should still work pretty well, however the outputted position will be affected by the flags `--min_counts` and `--min_frequency`.
+This tool was tested with PacBio HiFi data using [minimap2](https://github.com/lh3/minimap2) for alignment. For detecting short deletions this tool should also work well with Illumina data. Uncorrected nanopore reads could be a bit more tricky because of the indel issues that come with nanopore data. It should still work pretty well, however the outputted position will be affected by the flags `--min_counts` and `--min_frequency`.
 
 ## Installation
 
