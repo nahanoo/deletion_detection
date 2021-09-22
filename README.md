@@ -6,7 +6,8 @@ This is a very simple deletion detector for haploid genomes.
 As an input it uses sorted BAM files. Using `pysam` this tool iterates over every read in the Alignment file. The CIGAR code of every read is checked for deletions. Every position and how many times this deletion was found is stored as well as the coverage at given position.  
 All deletions are then filtered for `--min_counts` and `--min_frequency`. If no values are specified using those flags default min_counts is 5 and default min_frequency is 0.8.  
 If specified with `--output_no_alignment_regions` all regions with no read alignments are outputted additionally to in-read deletions.
-Note that this feature requires SAMtools>=1.11 in your PATH. 
+Note that this feature requires SAMtools>=1.11 in your PATH.  
+This tool was tested with PacBio HiFi data using [minimap2](https://github.com/lh3/minimap2) for alignment. For detecting shor deletion this tool should also work well with Illumina data. Uncorrected nanopore reads could be a bit more tricky because of the indel issues that come with nanopore data. It should still work pretty well, however the outputted position will be affected by the flags `--min_counts` and `--min_frequency`.
 
 ## Installation
 
@@ -19,27 +20,33 @@ pip install .
 
 ## Usage
 
-The tool can then be called using `deletion_detection BAMFILE OUTPUTDIR`
-
 Help page called with `deletion_detection -h`:
 ```
-usage: detect_deletions [-h] [--output_no_alignment_regions] [--min_counts MIN_COUNTS] [--min_frequency MIN_FREQUENCY]
+usage: detect_deletions [-h] [--output_no_alignment_regions]
+                        [--min_counts MIN_COUNTS]
+                        [--min_frequency MIN_FREQUENCY]
                         bam_file output_dir
 
-Deletion detection based on sorted BAM files. By default it only detects deletions which are located in reads. Adding the
---output_no_alignment_regions will also output the regions in the reference where no reads aligned. This feature requires
-SAMtools>=1.11 in your PATH.
+Deletion detection based on sorted BAM files. By default it only detects
+deletions which are located in reads. Adding the --output_no_alignment_regions
+will also output the regions in the reference where no reads aligned. This
+feature requires SAMtools>=1.11 in your PATH.
 
 positional arguments:
   bam_file              path to sorted BAM file.
-  output_dir            ouput direcotry.
+  output_dir            output direcotry.
 
 optional arguments:
   -h, --help            show this help message and exit
   --output_no_alignment_regions
-                        outputs the regions in the reference where no reads aligned. This feature requires SAMtools>=1.11 in your PATH.
+                        outputs the regions in the reference where no reads
+                        aligned. This feature requires SAMtools>=1.11 in your
+                        PATH.
   --min_counts MIN_COUNTS
                         minimal observed reads with the deletion [default is 5]
   --min_frequency MIN_FREQUENCY
-                        minimal observed frequency of deletion (observed reads with deletion divided by coverage) [default is 5]
+                        minimal observed frequency of the deletion (observed
+                        reads with the deletion divided by the coverage at this
+                        position) [default is 0.8]
+
 ```
