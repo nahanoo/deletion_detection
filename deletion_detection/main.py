@@ -10,12 +10,12 @@ def parse_args():
         in the reference where no reads aligned. This feature requires SAMtools>=1.11 in your PATH.\
         ')
     parser.add_argument('bam_file',help='path to sorted BAM file.')
-    parser.add_argument('output_dir',help='ouput direcotry.')
+    parser.add_argument('output_dir',help='output direcotry.')
     parser.add_argument('--output_no_alignment_regions',required=False,action='store_true',help='outputs the regions\
         in the reference where no reads aligned. This feature requires SAMtools>=1.11 in your PATH.')
     parser.add_argument('--min_counts',type=int,help='minimal observed reads with the deletion [default is 5]')
-    parser.add_argument('--min_frequency',type=float,help='minimal observed frequency of deletion (observed reads with\
-        deletion divided by coverage) [default is 5]')
+    parser.add_argument('--min_frequency',type=float,help='minimal observed frequency of the deletion (observed reads with\
+        the deletion divided by the coverage at this position) [default is 0.8]')
     return parser.parse_args()
 
 def main():
