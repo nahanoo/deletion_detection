@@ -27,19 +27,19 @@ class NoAlignment():
         self.coverage = pd.read_csv(StringIO(process.stdout.decode()),sep='\t')
         self.coverage.columns=['chromosome','position','coverage']
 
-    def get_no_alignment(self):
+    def get_no_alignments(self):
         """Hero we get all positions with zero reads aligned.
         """
-        return self.coverage[self.coverage['coverage'] == 0]
+        self.no_alignments_df = self.coverage[self.coverage['coverage'] == 0]
 
-    def get_unaligned_length(self,no_alignment_df):
+    def get_no_alignments_length(self):
         """This function detects the length of the unaligned region. 
         It does it by walking up the unaligned region based on a starting position
         and increasing the count of the length if the position is increased by one.
         """
         #For convenience we group the no alignment df as dictionary.
-        no_alignment = {chromosome:list() for chromosome in set(no_alignment_df['chromosome'])}
-        for chromosome,position in zip(no_alignment_df['chromosome'],no_alignment_df['position']):
+        no_alignment = {chromosome:list() for chromosome in set(self.no_alignments_df['chromosome'])}
+        for chromosome,position in zip(self.no_alignments_df['chromosome'],self.no_alignments_df['position']):
             no_alignment[chromosome].append(position)
 
         #All starting positions are stored in a dictionary.
@@ -58,12 +58,12 @@ class NoAlignment():
                     #If not continuous new starting position is defined.
                     start_position = position
                     start_positions[(chromosome,start_position)] = 1
-        self.no_alignment = start_positions
+        self.no_alignments = start_positions
 
     def write_no_alignments(self,out):
         """This function writes detected no alignment regions to tsv."""
-        df = pd.DataFrame(columns=['chromosome','position','length','type'],index=range(len(self.no_alignment.values())))
-        for counter,((chromosome,position),length) in enumerate(self.no_alignment.items()):
+        df = pd.DataFrame(columns=['chromosome','position','length','type'],index=range(len(self.no_alignments.values())))
+        for counter,((chromosome,position),length) in enumerate(self.no_alignments.items()):
             df.at[counter,'chromosome'] = chromosome
             df.at[counter,'position'] = position
             df.at[counter,'length'] = length

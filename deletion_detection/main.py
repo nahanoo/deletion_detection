@@ -46,9 +46,9 @@ def main():
         n = NoAlignment()
         #Get entire coverage
         n.get_coverage(args.bam_file)
-        df = n.get_no_alignment()
+        n.get_no_alignments()
         #Get regions with 0 coverage.
         #Samtools depth -J is used so in read deletions are counted as coverage.
-        n.get_unaligned_length(df)
+        n.get_no_alignments_length()
         #Write to tsv
         n.write_no_alignments(args.output_dir)
