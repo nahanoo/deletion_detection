@@ -1,6 +1,6 @@
 from setuptools import setup, find_packages
 
-setup(name='deltec',
+setup(name='deletion_detection',
       version='1.0',
       description='Detects deletions and regions with no alignments in BAM files derived from haploid genomes.',
       author='Eric Ulrich',
