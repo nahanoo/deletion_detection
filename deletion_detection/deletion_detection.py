@@ -6,7 +6,7 @@ from io import StringIO
 
 class Deletion():
     def get_coverage(self,path):
-        cmd = ['samtools','depth','-a','-J','-Q','60',path]
+        cmd = ['samtools','depth','-a','-J',path]
         process = subprocess.run(cmd,capture_output=True)
         coverage = pd.read_csv(StringIO(process.stdout.decode()),sep='\t')
         coverage.columns=['chromosome','position','coverage']
@@ -83,6 +83,3 @@ class Deletion():
             df.at[counter,'coverage'] = count_coverage[1]
             df.at[counter,'type'] = 'in-read deletion'
         df.to_csv(os.path.join(out,'in_read_deletions.tsv'),index=False,sep='\t')
-
-d = Deletion()
-d.get_deletions('/users/eulrich/work/genome_size/data/01/alignment.reads.minimap.sorted.bam')
