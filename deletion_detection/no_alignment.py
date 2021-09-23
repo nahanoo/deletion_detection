@@ -22,7 +22,7 @@ class NoAlignment():
         This function requires that samtools>=1.11 is in your PATH variable.
         """
         self.bamfile_path = path
-        cmd = ['samtools','depth','-a','-J',self.bamfile_path]
+        cmd = ['samtools','depth','-a','-J','-Q','60',self.bamfile_path]
         process = subprocess.run(cmd,capture_output=True)
         self.coverage = pd.read_csv(StringIO(process.stdout.decode()),sep='\t')
         self.coverage.columns=['chromosome','position','coverage']
