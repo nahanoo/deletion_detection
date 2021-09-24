@@ -28,7 +28,7 @@ usage: detect_deletions [-h] [--output_no_alignment_regions] [--min_counts MIN_C
 
 Deletion detection based on sorted BAM files. By default it only detects deletions which are located in
 reads. Adding the --output_no_alignment_regions will also output the regions in the reference where no reads
-aligned. This feature requires SAMtools>=1.11 in your PATH.
+aligned. This package requires SAMtools>=1.11 in your PATH.
 
 positional arguments:
   bam_file              path to sorted BAM file.
@@ -37,8 +37,7 @@ positional arguments:
 optional arguments:
   -h, --help            show this help message and exit
   --output_no_alignment_regions
-                        outputs the regions in the reference where no reads aligned. This feature requires
-                        SAMtools>=1.11 in your PATH.
+                        outputs the regions in the reference where no reads aligned.
   --min_counts MIN_COUNTS
                         minimal observed reads with the deletion [default is 5]
   --min_frequency MIN_FREQUENCY
