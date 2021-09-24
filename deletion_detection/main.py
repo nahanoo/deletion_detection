@@ -16,6 +16,8 @@ def parse_args():
     parser.add_argument('--min_counts',type=int,help='minimal observed reads with the deletion [default is 5]')
     parser.add_argument('--min_frequency',type=float,help='minimal observed frequency of the deletion (observed reads with\
         the deletion divided by the coverage at this position) [default is 0.8]')
+    parser.add_argument('--min_mapping_quality',type=int,help='minimal sequence mapping quality\
+        considered for coverage calculations [default is 60]')
     return parser.parse_args()
 
 def main():
@@ -25,6 +27,8 @@ def main():
         args.min_counts = 5
     if args.min_frequency is None:
         args.min_frequency = 0.8
+    if args.min_mapping_quality is None:
+        args.min_mapping_quality = 60
     #Output in-read deletions
     if not args.output_no_alignment_regions:
         d = Deletion()
@@ -45,7 +49,7 @@ def main():
         d.write_deletions(args.output_dir)
         n = NoAlignment()
         #Get entire coverage
-        n.get_coverage(args.bam_file)
+        n.get_coverage(args.bam_file,args.min_mapping_quality)
         n.get_no_alignments()
         #Get regions with 0 coverage.
         #Samtools depth -J is used so in read deletions are counted as coverage.
