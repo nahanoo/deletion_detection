@@ -24,7 +24,7 @@ class NoAlignment():
         --min_mapping_quality flag to get the desired results.
         """
         self.bamfile_path = path
-        cmd = ['samtools','depth','-a','-J','-Q',str(min_mapping_quality),self.bamfile_path]
+        cmd = ['samtools','depth','-aa','-J','-Q',str(min_mapping_quality),self.bamfile_path]
         process = subprocess.run(cmd,capture_output=True)
         self.coverage = pd.read_csv(StringIO(process.stdout.decode()),sep='\t')
         self.coverage.columns=['chromosome','position','coverage']
