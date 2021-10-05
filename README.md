@@ -20,7 +20,7 @@ pip install .
 
 ## Usage
 
-Help page called with `deletion_detection -h`:
+Help page called with `detect_deletions -h`:
 ```
 usage: detect_deletions [-h] [--output_no_alignment_regions] [--min_counts MIN_COUNTS]
                         [--min_frequency MIN_FREQUENCY] [--min_mapping_quality MIN_MAPPING_QUALITY]
