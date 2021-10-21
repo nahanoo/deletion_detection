@@ -1,0 +1,3 @@
+build/
+deletion_detection/testdata
+deletion_detection.egg-info/
