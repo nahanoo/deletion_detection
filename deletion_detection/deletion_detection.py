@@ -72,14 +72,16 @@ class Deletion():
             if (count >= min_count) and (count/coverage >= min_freq):
                 self.filtered_deletions[k] = ([count,coverage],length)
 
-    def write_deletions(self,out):
-        """This function writes detected deletions to tsv."""
-        df = pd.DataFrame(columns=['chromosome','position','length','count','coverage','type'],index=range(len(self.filtered_deletions.values())))
+    def create_df(self):
+        self.output = pd.DataFrame(columns=['chromosome','position','length','count','coverage','type'],index=range(len(self.filtered_deletions.values())))
         for counter,((chromosome,position),(count_coverage,length)) in enumerate(self.filtered_deletions.items()):
-            df.at[counter,'chromosome'] = chromosome
-            df.at[counter,'position'] = position
-            df.at[counter,'length'] = length
-            df.at[counter,'count'] = count_coverage[0]
-            df.at[counter,'coverage'] = count_coverage[1]
-            df.at[counter,'type'] = 'in-read deletion'
+            self.output.at[counter,'chromosome'] = chromosome
+            self.output.at[counter,'position'] = position
+            self.output.at[counter,'length'] = length
+            self.output.at[counter,'count'] = count_coverage[0]
+            self.output.at[counter,'coverage'] = count_coverage[1]
+            self.output.at[counter,'type'] = 'in-read deletion'
+
+    def write_deletions(self,df,out):
+        """This function writes detected deletions to tsv."""
         df.to_csv(os.path.join(out,'in_read_deletions.tsv'),index=False,sep='\t')
