@@ -39,13 +39,17 @@ class Annotation():
         for i,row in df.iterrows():
             #Iterating over all deletions
             c,p,l = row['chromosome'],row['position'],row['length']
+            #We need to store if deletion is annotated in order that it is still outputted
+            #in case no feature is found.
             #Iterating over all features. Follwing code is inefficient
             #but necessary to annotate long no alignment regions
             gc_content = self.get_gc_content(c,p,l)
+            annotated = False
             for (start,end),feature in self.features[c].items():
                 for nucleotide in range(start,end):
                     #Checks if any position in a feature is in a deletion
                     if nucleotide in range(p,p+l):
+                        annotated = True
                         try:
                             gene = feature['gene']
                         except KeyError:
@@ -62,3 +66,7 @@ class Annotation():
                         self.annotation.loc[loc] = row.to_list()+entries
                         loc += 1
                         break
+            if not annotated:
+                entries = [gc_content,np.nan,np.nan,np.nan,np.nan,np.nan]
+                self.annotation.loc[loc] = row.to_list()+entries
+                loc += 1
