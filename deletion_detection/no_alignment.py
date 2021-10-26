@@ -62,12 +62,15 @@ class NoAlignment():
                     start_positions[(chromosome,start_position)] = 1
         self.no_alignments = start_positions
 
-    def write_no_alignments(self,out):
-        """This function writes detected no alignment regions to tsv."""
-        df = pd.DataFrame(columns=['chromosome','position','length','type'],index=range(len(self.no_alignments.values())))
+    def create_df(self):
+        """Creates df for outputting or for annotating."""
+        self.output = pd.DataFrame(columns=['chromosome','position','length','type'],index=range(len(self.no_alignments.values())))
         for counter,((chromosome,position),length) in enumerate(self.no_alignments.items()):
-            df.at[counter,'chromosome'] = chromosome
-            df.at[counter,'position'] = position
-            df.at[counter,'length'] = length
-            df.at[counter,'type'] = 'no alignment region'
+            self.output.at[counter,'chromosome'] = chromosome
+            self.output.at[counter,'position'] = position
+            self.output.at[counter,'length'] = length
+            self.output.at[counter,'type'] = 'no alignment region'
+
+    def write_no_alignments(self,df,out):
+        """This function writes detected no alignment regions to tsv."""
         df.to_csv(os.path.join(out,'no_alignment_regions.tsv'),index=False,sep='\t')
