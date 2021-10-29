@@ -82,6 +82,6 @@ class Deletion():
             self.output.at[counter,'coverage'] = count_coverage[1]
             self.output.at[counter,'type'] = 'in-read deletion'
 
-    def write_deletions(self,df,out):
+    def write_deletions(self,df,out,prefix):
         """This function writes detected deletions to tsv."""
-        df.to_csv(os.path.join(out,'in_read_deletions.tsv'),index=False,sep='\t')
+        df.to_csv(os.path.join(out,prefix+'.reads.tsv'),index=False,sep='\t')
