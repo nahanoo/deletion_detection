@@ -71,6 +71,6 @@ class NoAlignment():
             self.output.at[counter,'length'] = length
             self.output.at[counter,'type'] = 'no alignment region'
 
-    def write_no_alignments(self,df,out):
+    def write_no_alignments(self,df,out,prefix):
         """This function writes detected no alignment regions to tsv."""
-        df.to_csv(os.path.join(out,'no_alignment_regions.tsv'),index=False,sep='\t')
+        df.to_csv(os.path.join(out,prefix+'.noalignments.tsv'),index=False,sep='\t')

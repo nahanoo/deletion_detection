@@ -12,6 +12,7 @@ def parse_args():
         ')
     parser.add_argument('bam_file',help='path to sorted BAM file.')
     parser.add_argument('output_dir',help='output direcotry.')
+    parser.add_argument('--prefix',help='prefix for output')
     parser.add_argument('--genbank',help='if specified deletions will be annotated based on genbank files')
     parser.add_argument('--no_alignment_only',action='store_true',\
         help='if specified only no alignment regions will be outputted')
@@ -33,6 +34,8 @@ def main():
         args.min_frequency = 0.8
     if args.min_mapping_quality is None:
         args.min_mapping_quality = 60
+    if args.prefix is None:
+        args.prefix = ''
     
     n = NoAlignment()
     #Get entire coverage
@@ -46,9 +49,9 @@ def main():
         a = Annotation()
         a.parse_genbank(args.genbank)
         a.annotate(n.output)
-        n.write_no_alignments(a.annotation,args.output_dir)
+        n.write_no_alignments(a.annotation,args.output_dir,args.prefix)
     else:
-        n.write_no_alignments(n.output,args.output_dir)
+        n.write_no_alignments(n.output,args.output_dir,args.prefix)
 
     if not args.no_alignment_only:
         #Output in-read deletions
@@ -63,6 +66,6 @@ def main():
             a = Annotation()
             a.parse_genbank(args.genbank)
             a.annotate(d.output)
-            d.write_deletions(a.annotation,args.output_dir)
+            d.write_deletions(a.annotation,args.output_dir,args.prefix)
         else:
-            d.write_deletions(d.output,args.output_dir)
+            d.write_deletions(d.output,args.output_dir,args.prefix)
