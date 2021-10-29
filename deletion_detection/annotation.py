@@ -28,7 +28,10 @@ class Annotation():
     def get_gc_content(self,chromosome,position,length):
         contigs = [contig.id for contig in self.contigs]
         sequence = self.contigs[contigs.index(chromosome)][position:position+length]
-        return 100.0*len([base for base in sequence if base in "GC"])/len(sequence)
+        if len(sequence.seq) > 0:
+            return 100.0*len([base for base in sequence if base in "GC"])/len(sequence)
+        if len(sequence.seq) == 0:
+            return 'end of contig'
 
     def annotate(self,df):
         """Iterates over all deletions and no aignment regions and annotates
