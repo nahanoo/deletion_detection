@@ -57,14 +57,9 @@ class Annotation():
                             gene = feature['gene']
                         except KeyError:
                             gene = np.nan
-                        if feature['strand'] == 1:
-                            nt = [nucleotide-start,nucleotide-start+l,end-start]
-                        if feature['strand'] == -1:
-                            nt = [end-nucleotide,end-nucleotide+l,end-start]
-                        if nt[1] > nt[2]:
-                                nt[1] = nt[2]
+                        nt = [start,end]
                         nt = [str(n) for n in nt]
-                        nt = nt[0]+'-'+nt[1]+'/'+nt[2]
+                        nt = nt[0]+'-'+nt[1]
                         entries = [gc_content,feature['type'],feature['strand'],nt,gene,feature['product']]
                         self.annotation.loc[loc] = row.to_list()+entries
                         loc += 1
