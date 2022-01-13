@@ -42,6 +42,7 @@ class Annotation():
         for i,row in df.iterrows():
             #Iterating over all deletions
             c,p,l = row['chromosome'],row['position'],row['length']
+            c = '.'.join(c.split('.')[:-1])
             #We need to store if deletion is annotated in order that it is still outputted
             #in case no feature is found.
             #Iterating over all features. Follwing code is inefficient
