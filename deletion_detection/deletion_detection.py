@@ -1,87 +1,227 @@
-import pysam
-import pandas as pd
-import os
-import subprocess
+from os.path import join, exists
+from os import mkdir, remove
 from io import StringIO
+from subprocess import call, run as r, DEVNULL, STDOUT
+from Bio import SeqIO
+import pandas as pd
+from plotting import plot_alignment, plot_genbank
+import pysam
+
 
 class Deletion():
-    def get_coverage(self,path):
-        cmd = ['samtools','depth','-a','-J',path]
-        process = subprocess.run(cmd,capture_output=True)
-        coverage = pd.read_csv(StringIO(process.stdout.decode()),sep='\t')
-        coverage.columns=['chromosome','position','coverage']
-        self.coverage = dict()
-        for chromosome,position,coverage in zip(coverage['chromosome'],\
-            coverage['position'],coverage['coverage']):
-            self.coverage[(chromosome,position)] = coverage
+    def __init__(self, args):
+        self.out_dir = args.out_dir
+        self.reference_gbk = args.anceteral
+        self.mutant_fasta = args.mutant
 
-    def get_deletions(self,path):
-        """This functions iterates over all primary reads in the alignment file.
-        The CIGAR code of every read is checked for deletions.
-        If deletions are found, the deletion count and the coverage at given position is stored.
-        """
-        self.deletions = dict()
-        alignment = pysam.AlignmentFile(path,'rb')
-        reads = []
-        for read in alignment:
-            if not read.is_secondary:
-                reads.append(read)
-        total_reads = len(reads)
-        self.get_coverage(path)
-        for counter,read in enumerate(reads):
-            #We set the block position to zero which stands for the position in the reference.
-            block_pos = 0
-            #We set the cigar position to zero which stands for the position within the cigar code.
-            cigar_pos = 0
-            #Iterating over the cigar code:
-            for (block_type, block_len) in read.cigar:
-                """Block_type contains information about variant type. Depending on the block type
-                we need to move forward on the reference side (block_pos) or the query side (cigar_pos).
-                There is a very useful table about this on https://samtools.github.io/hts-specs/SAMv1.pdf page 8"""
-                #0 is match or mismatch
-                if block_type == 0:
-                    block_pos += block_len
-                    cigar_pos += block_len
-                #1 is insertion to the reference
-                elif block_type == 1:
-                    cigar_pos += block_len
-                #2 deletion from the reference
-                elif block_type == 2:
-                    #Deletion is stored in dictionary.
-                    #Values are ([count,coverage],length)
-                    #pysam is 0 index based, to make it compareable with samtools I switched to 1 indexing for storing.
-                    if self.deletions.get((read.reference_name,read.pos+block_pos+1)) != None:
-                        self.deletions[(read.reference_name,read.pos+block_pos+1)][0][0] += 1
-                        coverage = self.coverage[(read.reference_name,read.pos+block_pos+1)]
-                        self.deletions[(read.reference_name,read.pos+block_pos+1)][0][1] = coverage
-                    else:
-                        self.deletions[(read.reference_name,read.pos+block_pos+1)] = ([1,None],block_len)
-                    block_pos += block_len
-                #3 is skipped region from the reference
-                elif block_type == 3:
-                    block_pos += block_len
-                #4 is soft clipping
-                elif block_type == 4:
-                    cigar_pos += block_len
+        self.step = 10000
+        self.window = 50000
 
-    def filter_deletions(self,min_count,min_freq):
-        """This function filters deletions. Min_count stands for the minimal
-        observed count of deletions and min_freq minimal observed deletion frequency (count/coverage)."""
-        self.filtered_deletions = dict()
-        for k,((count,coverage),length) in self.deletions.items():
-            if (count >= min_count) and (count/coverage >= min_freq):
-                self.filtered_deletions[k] = ([count,coverage],length)
+        self.mutant_contigs = [contig for contig in SeqIO.parse(
+            self.mutant_fasta, 'fasta')]
 
-    def create_df(self):
-        self.output = pd.DataFrame(columns=['chromosome','position','length','count','coverage','type'],index=range(len(self.filtered_deletions.values())))
-        for counter,((chromosome,position),(count_coverage,length)) in enumerate(self.filtered_deletions.items()):
-            self.output.at[counter,'chromosome'] = chromosome
-            self.output.at[counter,'position'] = position
-            self.output.at[counter,'length'] = length
-            self.output.at[counter,'count'] = count_coverage[0]
-            self.output.at[counter,'coverage'] = count_coverage[1]
-            self.output.at[counter,'type'] = 'in-read deletion'
+        self.reference_contigs = [contig for contig in SeqIO.parse(
+            self.reference_gbk, 'genbank')]
+        self.reference_fasta = join(self.out_dir, 'reference.fasta')
+        with open(join(self.out_dir, 'reference.fasta'), 'w') as handle:
+            SeqIO.write(self.reference_contigs, handle, 'fasta')
+        self.genbank = self.parse_genbank()
 
-    def write_deletions(self,df,out,prefix):
-        """This function writes detected deletions to tsv."""
-        df.to_csv(os.path.join(out,prefix+'.reads.tsv'),index=False,sep='\t')
+        self.bam = join(self.out_dir, "aligned.sorted.bam")
+        self.deletions = None
+
+        self.annotated = pd.DataFrame(
+            columns=['chromosome', 'position', 'length', 'start', 'end', 'protein'])
+        self.deleted_plasmids = pd.DataFrame(
+            columns=['chromosome', 'position', 'length'])
+        self.deleted_plasmids_annotated = pd.DataFrame(
+            columns=['chromosome', 'position', 'length', 'start', 'end', 'protein'])
+
+        if not exists(join(self.out_dir, 'plots')):
+            mkdir(join(self.out_dir, 'plots'))
+
+    def parse_genbank(self):
+        genbank = {contig.id: {} for contig in self.reference_contigs}
+        for contig in self.reference_contigs:
+            for feature in contig.features:
+                try:
+                    start = feature.location.start
+                    end = feature.location.end
+                    product = feature.qualifiers['product']
+                    genbank[contig.id][(start, end)] = product[0]
+                except KeyError:
+                    pass
+        return genbank
+
+    def chunker(self, seq, window_size, step):
+        """Creates chunks of a sequence. window_size defines
+        chunk size and step the amount of basepairs the window
+        is moved forward."""
+        # List which stores all chunks
+        seqs = []
+        seqlen = len(seq)
+        self.step = step
+        for counter, q in enumerate(range(0, seqlen, step)):
+            # Returns ether entire sequence or window depending on sequence length
+            j = seqlen if q + window_size > seqlen else q + window_size
+            chunk = seq[q:j]
+            # Add chunk id to sequence id
+            chunk.id = chunk.id + "." + str(counter)
+            seqs.append(chunk)
+            if j == seqlen:
+                break
+        return seqs
+
+    def chunk_assembly(self):
+        """Chunks an assembly of multiple contigs into different 
+        chunks using a sliding window algorightm (see chunker function)."""
+        assembly_chunks = []
+        for contig in self.mutant_contigs:
+            # Creates chunks of every contig
+            assembly_chunks += self.chunker(contig, self.window, self.step)
+        target = join(self.out_dir,
+                      "chunked_sequences.fasta")
+        # Dumps chunks to fasta
+        with open(target, "w") as handle:
+            SeqIO.write(assembly_chunks, handle, "fasta")
+
+    def mapper(self):
+        """Maps chunked sequence to all ancesteral genomes
+        experiment with minimap2.
+        Minimap2 settings are set to accureate PacBio reads."""
+        reads = join(self.out_dir, "chunked_sequences.fasta")
+        sam = join(self.out_dir, "aligned.sam")
+        cmd = [
+            "minimap2",
+            "-ax",
+            "asm5",
+            self.reference_fasta,
+            reads,
+            ">",
+            sam,
+        ]
+        # Calling minimap and surpressing stdout
+        call(" ".join(cmd), shell=True, stdout=DEVNULL,
+             stderr=STDOUT)
+        cmd = ['samtools', 'sort', '-o', self.bam, sam]
+        # Calling samtools and surpressing stdout
+        call(" ".join(cmd), shell=True, stdout=DEVNULL,
+             stderr=STDOUT)
+        cmd = ['samtools', 'index', self.bam]
+        # Calling samtools and surpressing stdout
+        call(" ".join(cmd), shell=True, stdout=DEVNULL,
+             stderr=STDOUT)
+
+    def get_deletions(self):
+        cmd = ['samtools', 'depth', '-aa', '-Q', '0', self.bam]
+        process = r(cmd, capture_output=True)
+        df = pd.read_csv(StringIO(process.stdout.decode()), sep='\t')
+        df.columns = ['chromosome', 'position', 'coverage']
+        df = df[df['coverage'] == 0]
+        self.deletions = self.concat_deletions(df)
+        self.deletions['position'] = self.deletions['position'] - 1
+        mask = []
+        a = pysam.AlignmentFile(self.bam)
+        for c, p, l in zip(self.deletions['chromosome'], self.deletions['position'], self.deletions['length']):
+            if l == a.get_reference_length(c):
+                self.deleted_plasmids.loc[len(self.deleted_plasmids)] = [c,p,l]
+                mask.append(False)
+            else:
+                reads = []
+                for read in a.fetch(c, p-100, p+l+100):
+                    reads.append(read.qname)
+                deletion_break = self.check_break(reads)
+                if l < 500:
+                    deletion_break = False
+                mask.append(deletion_break)
+        self.deletions = self.deletions[mask]
+        self.deletions.to_csv(
+            join(self.out_dir, 'deletions.tsv'), sep='\t', index=False)
+
+    def concat_deletions(self, df):
+        out = pd.DataFrame(columns=['chromosome', 'position', 'length'])
+        i = -1
+        prev_pos = 0
+        prev_contig = None
+        for contig, pos in zip(df['chromosome'], df['position']):
+            if (prev_contig == contig) & (pos - 1 == prev_pos):
+                out.at[i, 'length'] += 1
+            else:
+                i += 1
+                out.loc[i] = [contig, pos, 1]
+            prev_pos = pos
+            prev_contig = contig
+        return out
+
+    def check_break(self, reads):
+        contigs = ['.'.join(read.split('.')[:-1]) for read in reads]
+        if len(set(contigs)) > 1:
+            return False
+
+        index = sorted([int(read.split('.')[-1]) for read in reads])
+        prev = index[0]
+        for i in index[1:]:
+            if i - 1 == prev:
+                pass
+            else:
+                return False
+            prev += 1
+
+        return True
+
+    def annotate(self):
+        i = 0
+        for counter, row in self.deletions.iterrows():
+            c = row['chromosome']
+            p = row['position']
+            l = row['length']
+            a = pysam.AlignmentFile(self.bam)
+            for read in a.fetch(c, p-1, p):
+                c_mut = '.'.join(read.qname.split('.')[:-1])
+                p_mut = int(read.qname.split('.')[-1]) * self.step + read.qend
+                break
+        
+            for (start, end), product in self.genbank[c].items():
+                if (start >= p) & (end <= p + l):
+                    self.annotated.loc[i] = [
+                        c_mut, p_mut, l, start, end, product]
+                    i += 1
+        self.annotated = self.annotated.drop_duplicates()
+        self.annotated.to_csv(
+            join(self.out_dir, 'deletions.annotated.tsv'), sep='\t', index=False)
+
+
+        print(self.deleted_plasmids)
+        i = 0
+        for counter, row in self.deleted_plasmids.iterrows():
+            c = row['chromosome']
+            p = row['position']
+            l = row['length']
+            for (start, end), product in self.genbank[c].items():
+                if (start >= p) & (end <= p + l):
+                    self.deleted_plasmids_annotated.loc[i] = [
+                        c_mut, p_mut, l, start, end, product]
+                    i += 1
+        self.deleted_plasmids_annotated = self.deleted_plasmids_annotated.drop_duplicates()
+        self.deleted_plasmids_annotated.to_csv(
+            join(self.out_dir, 'deleted_plasmids.annotated.tsv'), sep='\t', index=False)
+
+    def plot_deletions(self):
+        out = join(self.out_dir, 'plots', 'alignments')
+        if not exists(out):
+            mkdir(out)
+
+        for chromosome, position in zip(self.deletions['chromosome'], self.deletions['position']):
+            plot_alignment(self.bam, chromosome, position, out)
+
+    def plot_annotation(self):
+        out = join(self.out_dir, 'plots', 'annotations')
+        if not exists(out):
+            mkdir(out)
+        for i, row in self.deletions.iterrows():
+            plot_genbank(
+                self.reference_contigs, row['chromosome'], row['position'],
+                row['position']+row['length'], out)
+
+    def clean(self):
+        remove(self.mutant_fasta)
