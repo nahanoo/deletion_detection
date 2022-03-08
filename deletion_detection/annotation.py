@@ -60,9 +60,12 @@ class Annotation():
                         nt = [start,end]
                         nt = [str(n) for n in nt]
                         nt = nt[0]+'-'+nt[1]
-                        entries = [gc_content,feature['type'],feature['strand'],nt,gene,feature['product']]
-                        self.annotation.loc[loc] = row.to_list()+entries
-                        loc += 1
+                        try:
+                            entries = [gc_content,feature['type'],feature['strand'],nt,gene,feature['product']]
+                            self.annotation.loc[loc] = row.to_list()+entries
+                            loc += 1
+                        except KeyError:
+                            print(feature)
                         break
             if not annotated:
                 entries = [gc_content,np.nan,np.nan,np.nan,np.nan,np.nan]
