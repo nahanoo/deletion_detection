@@ -1,87 +1,286 @@
-import pysam
-import pandas as pd
-import os
-import subprocess
+from os.path import join, exists
+from os import mkdir, remove
 from io import StringIO
+from subprocess import call, run as r, DEVNULL, STDOUT
+from Bio import SeqIO
+import pandas as pd
+from .plotting import plot_alignment, plot_genbank
+import pysam
+
 
 class Deletion():
-    def get_coverage(self,path):
-        cmd = ['samtools','depth','-a','-J',path]
-        process = subprocess.run(cmd,capture_output=True)
-        coverage = pd.read_csv(StringIO(process.stdout.decode()),sep='\t')
-        coverage.columns=['chromosome','position','coverage']
-        self.coverage = dict()
-        for chromosome,position,coverage in zip(coverage['chromosome'],\
-            coverage['position'],coverage['coverage']):
-            self.coverage[(chromosome,position)] = coverage
+    def __init__(self, args):
+        # Input file paths
+        self.out_dir = args.out_dir
+        self.reference_gbk = args.ancestral
+        self.mutant_fasta = args.mutant
+        # Bam file path
+        self.bam = join(self.out_dir, "aligned.sorted.bam")
 
-    def get_deletions(self,path):
-        """This functions iterates over all primary reads in the alignment file.
-        The CIGAR code of every read is checked for deletions.
-        If deletions are found, the deletion count and the coverage at given position is stored.
-        """
-        self.deletions = dict()
-        alignment = pysam.AlignmentFile(path,'rb')
-        reads = []
-        for read in alignment:
-            if not read.is_secondary:
-                reads.append(read)
-        total_reads = len(reads)
-        self.get_coverage(path)
-        for counter,read in enumerate(reads):
-            #We set the block position to zero which stands for the position in the reference.
-            block_pos = 0
-            #We set the cigar position to zero which stands for the position within the cigar code.
-            cigar_pos = 0
-            #Iterating over the cigar code:
-            for (block_type, block_len) in read.cigar:
-                """Block_type contains information about variant type. Depending on the block type
-                we need to move forward on the reference side (block_pos) or the query side (cigar_pos).
-                There is a very useful table about this on https://samtools.github.io/hts-specs/SAMv1.pdf page 8"""
-                #0 is match or mismatch
-                if block_type == 0:
-                    block_pos += block_len
-                    cigar_pos += block_len
-                #1 is insertion to the reference
-                elif block_type == 1:
-                    cigar_pos += block_len
-                #2 deletion from the reference
-                elif block_type == 2:
-                    #Deletion is stored in dictionary.
-                    #Values are ([count,coverage],length)
-                    #pysam is 0 index based, to make it compareable with samtools I switched to 1 indexing for storing.
-                    if self.deletions.get((read.reference_name,read.pos+block_pos+1)) != None:
-                        self.deletions[(read.reference_name,read.pos+block_pos+1)][0][0] += 1
-                        coverage = self.coverage[(read.reference_name,read.pos+block_pos+1)]
-                        self.deletions[(read.reference_name,read.pos+block_pos+1)][0][1] = coverage
-                    else:
-                        self.deletions[(read.reference_name,read.pos+block_pos+1)] = ([1,None],block_len)
-                    block_pos += block_len
-                #3 is skipped region from the reference
-                elif block_type == 3:
-                    block_pos += block_len
-                #4 is soft clipping
-                elif block_type == 4:
-                    cigar_pos += block_len
+        # Chunk parameters
+        self.step = 10000
+        self.window = 50000
 
-    def filter_deletions(self,min_count,min_freq):
-        """This function filters deletions. Min_count stands for the minimal
-        observed count of deletions and min_freq minimal observed deletion frequency (count/coverage)."""
-        self.filtered_deletions = dict()
-        for k,((count,coverage),length) in self.deletions.items():
-            if (count >= min_count) and (count/coverage >= min_freq):
-                self.filtered_deletions[k] = ([count,coverage],length)
+        # List contigs
+        self.mutant_contigs = [contig for contig in SeqIO.parse(
+            self.mutant_fasta, 'fasta')]
+        self.reference_contigs = [contig for contig in SeqIO.parse(
+            self.reference_gbk, 'genbank')]
+        self.reference_features = self.parse_genbank()
+        # Dumping input reference as fasta for mapping
+        self.reference_fasta = join(self.out_dir, 'reference.fasta')
+        with open(join(self.out_dir, 'reference.fasta'), 'w') as handle:
+            SeqIO.write(self.reference_contigs, handle, 'fasta')
 
-    def create_df(self):
-        self.output = pd.DataFrame(columns=['chromosome','position','length','count','coverage','type'],index=range(len(self.filtered_deletions.values())))
-        for counter,((chromosome,position),(count_coverage,length)) in enumerate(self.filtered_deletions.items()):
-            self.output.at[counter,'chromosome'] = chromosome
-            self.output.at[counter,'position'] = position
-            self.output.at[counter,'length'] = length
-            self.output.at[counter,'count'] = count_coverage[0]
-            self.output.at[counter,'coverage'] = count_coverage[1]
-            self.output.at[counter,'type'] = 'in-read deletion'
+        # Output dataframes
+        self.no_coverage = pd.DataFrame(
+            columns=['chromosome', 'position', 'length'])
+        self.deletions = pd.DataFrame(
+            columns=['chromosome', 'position',
+                     'length', 'chromosome_origin', 'position_origin'])
+        self.deletions_annotated = pd.DataFrame(
+            columns=['chromosome', 'position',
+                     'length', 'chromosome_origin', 'position_origin', 'products'])
+        self.plasmids = pd.DataFrame(
+            columns=['chromosome', 'position', 'length'])
+        self.plasmids_annotated = pd.DataFrame(
+            columns=['chromosome', 'position', 'length', 'products'])
 
-    def write_deletions(self,df,out,prefix):
-        """This function writes detected deletions to tsv."""
-        df.to_csv(os.path.join(out,prefix+'.reads.tsv'),index=False,sep='\t')
+        # Create plot directory
+        if not exists(join(self.out_dir, 'plots')):
+            mkdir(join(self.out_dir, 'plots'))
+
+    def parse_genbank(self):
+        """Parses all features of a genbanka and stores locations
+        and products in dictionary"""
+        genbank = {contig.id: {} for contig in self.reference_contigs}
+        for contig in self.reference_contigs:
+            for feature in contig.features:
+                # Some features don't have all desired keys
+                try:
+                    start = feature.location.start
+                    end = feature.location.end
+                    product = feature.qualifiers['product']
+                    genbank[contig.id][(start, end)] = product[0]
+                except KeyError:
+                    pass
+        return genbank
+
+    def chunker(self, seq, window_size, step):
+        """Creates chunks of a sequence. window_size defines
+        chunk size and step the amount of basepairs the window
+        is moved forward."""
+        # List which stores all chunks
+        seqs = []
+        seqlen = len(seq)
+        self.step = step
+        for counter, q in enumerate(range(0, seqlen, step)):
+            # Returns ether entire sequence or window depending on sequence length
+            j = seqlen if q + window_size > seqlen else q + window_size
+            chunk = seq[q:j]
+            # Add chunk id to sequence id
+            chunk.id = chunk.id + "." + str(counter)
+            seqs.append(chunk)
+            if j == seqlen:
+                break
+        return seqs
+
+    def chunk_assembly(self):
+        """Chunks an assembly of multiple contigs into different 
+        chunks using a sliding window algorightm (see chunker function)."""
+        assembly_chunks = []
+        for contig in self.mutant_contigs:
+            # Creates chunks of every contig
+            assembly_chunks += self.chunker(contig, self.window, self.step)
+        target = join(self.out_dir,
+                      "chunked_sequences.fasta")
+        # Dumps chunks to fasta
+        with open(target, "w") as handle:
+            SeqIO.write(assembly_chunks, handle, "fasta")
+
+    def mapper(self, reference, reads, out):
+        """Maps long accurate sequences to references with minimap2."""
+        cmd = [
+            "minimap2",
+            "-ax",
+            "asm5",
+            reference,
+            reads,
+            ">",
+            out,
+        ]
+        bam = out.replace('.sam', '.sorted.bam')
+        # Calling minimap and surpressing stdout
+        call(" ".join(cmd), shell=True, stdout=DEVNULL,
+             stderr=STDOUT)
+        cmd = ['samtools', 'sort', '-o', bam, out]
+        # Calling samtools and surpressing stdout
+        call(" ".join(cmd), shell=True, stdout=DEVNULL,
+             stderr=STDOUT)
+        cmd = ['samtools', 'index', bam]
+        # Calling samtools and surpressing stdout
+        call(" ".join(cmd), shell=True, stdout=DEVNULL,
+             stderr=STDOUT)
+
+    def map_chunks(self):
+        """Maps chunked sequences to reference"""
+        self.mapper(self.reference_fasta, join(self.out_dir, "chunked_sequences.fasta"),
+                    join(self.out_dir, "aligned.sam"))
+
+    def get_deletions(self):
+        """Gets all regions with 0 coverage and seperates between
+        in strand deletion or deleted plasmids."""
+        cmd = ['samtools', 'depth', '-aa', '-Q', '0', self.bam]
+        process = r(cmd, capture_output=True)
+        df = pd.read_csv(StringIO(process.stdout.decode()), sep='\t')
+        df.columns = ['chromosome', 'position', 'coverage']
+        # Masks for regions with no coverage
+        df = df[df['coverage'] == 0]
+        # Concats positions into start position + length
+        self.concat_deletions(df)
+        # Switching to 0 based index
+        self.no_coverage['position'] = self.no_coverage['position'] - 1
+        a = pysam.AlignmentFile(self.bam)
+        for i, row in self.no_coverage.iterrows():
+            c, p, l = row
+            if l == a.get_reference_length(c):
+                # Entire plasmid is deleted
+                self.plasmids.loc[len(self.plasmids)] = [c, p, l]
+            else:
+                self.deletions.loc[len(self.deletions)] = [None, None, l, c, p]
+
+    def concat_deletions(self, df):
+        """Concats following positions into deletions
+        with length equals n following positions."""
+        i = -1
+        prev_pos = 0
+        prev_contig = None
+        for contig, pos in zip(df['chromosome'], df['position']):
+            if (prev_contig == contig) & (pos - 1 == prev_pos):
+                self.no_coverage.at[i, 'length'] += 1
+            else:
+                i += 1
+                self.no_coverage.loc[i] = [contig, pos, 1]
+            prev_pos = pos
+            prev_contig = contig
+
+    def get_location(self):
+        """Extracts sequence from reference around detected deletion.
+        Sequence is aligned to mutant to find position in the mutant."""
+        # Switching to dict style
+        reference_contigs = {
+            contig.id: contig for contig in self.reference_contigs}
+        i = 0
+        deletions = pd.DataFrame(columns=self.deletions.columns)
+        for c, p, l in zip(self.deletions['chromosome_origin'],
+                           self.deletions['position_origin'], self.deletions['length']):
+            a = pysam.AlignmentFile(self.bam)
+            # Getting correct paddins considering pos possiblye
+            # being at the start or the end of a contig
+            padding = 2000
+            if p - padding < 0:
+                start = 0
+            else:
+                start = p - padding
+            if p + padding > a.get_reference_length(c):
+                end = a.get_reference_length(c)
+            else:
+                end = p + padding
+
+            # Getting sequence around deletion in reference
+            seq = reference_contigs[c][start:p]
+            seq += reference_contigs[c][p+l:end]
+            seq_id = c + '.' + str(p)
+            seq.id = seq_id
+
+            # Location of deletion in sequence
+            rel_pos = p - start
+
+            # Mapping files
+            tmp_seq = join(self.out_dir, 'tmp_seq.fasta')
+            tmp_sam = join(self.out_dir, 'tmp_seq.sam')
+            tmp_bam = tmp_sam.replace('.sam', '.sorted.bam')
+            with open(tmp_seq, 'w') as handle:
+                SeqIO.write(seq, handle, 'fasta')
+
+            # Mapping to mutant
+            self.mapper(self.mutant_fasta, tmp_seq, tmp_sam)
+
+            a = pysam.AlignmentFile(tmp_bam)
+            for read in a:
+                if not (read.is_unmapped):
+                    # Idetifying positions
+                    deletions.loc[i] = [
+                        read.reference_name, read.reference_start + rel_pos, l, c, p]
+                    i += 1
+        self.deletions = deletions
+
+    def annotate(self):
+        """Annotates the dataframes of deleted plasmids and
+        in strand deletions."""
+        i = 0
+        for c, p, l in zip(self.plasmids['chromosome'], self.plasmids['position'], self.plasmids['length']):
+            products = self.annotate_position(c, p, l)
+            for product in products:
+                self.plasmids_annotated.loc[i] = [c, p, l, product]
+                i += 1
+
+        i = 0
+        for counter, row in self.deletions.iterrows():
+            c, p, l, c_o, p_o = row
+            products = self.annotate_position(c_o, p_o, l)
+            for product in products:
+                self.deletions_annotated.loc[i] = [c, p, l, c_o, p_o, product]
+                i += 1
+
+    def annotate_position(self, c, p, l):
+        """Returns products in a region in a genbank."""
+        products = []
+        for (start, end), product in self.reference_features[c].items():
+            if not set(range(start, end)).isdisjoint(range(p, p+l)):
+                products.append(product)
+        return products
+
+    def dump(self):
+        """Dumping all dataframes."""
+        self.no_coverage.to_csv(
+            join(self.out_dir, 'no_coverage.tsv'), sep='\t', index=False)
+
+        self.deletions.to_csv(
+            join(self.out_dir, 'deletions.tsv'), sep='\t', index=False)
+        self.deletions_annotated.to_csv(
+            join(self.out_dir, 'deletions.annotated.tsv'), sep='\t', index=False)
+
+        self.plasmids.to_csv(
+            join(self.out_dir, 'plasmids.tsv'), sep='\t', index=False)
+        self.plasmids_annotated.to_csv(
+            join(self.out_dir, 'plasmids.annotated.tsv'), sep='\t', index=False)
+
+    def plot_deletions(self):
+        """Plots alignments."""
+        out = join(self.out_dir, 'plots', 'alignments')
+        if not exists(out):
+            mkdir(out)
+
+        for chromosome, position in zip(self.deletions['chromosome_origin'], self.deletions['position_origin']):
+            plot_alignment(self.bam, chromosome, position, out)
+
+    def plot_annotation(self):
+        """Plots annotation"""
+        out = join(self.out_dir, 'plots', 'annotations')
+        if not exists(out):
+            mkdir(out)
+        for i, row in self.deletions.iterrows():
+            plot_genbank(
+                self.reference_contigs, row['chromosome_origin'], row['position_origin'],
+                row['position_origin']+row['length'], out)
+
+    def clean(self):
+        """Deletes temporary files."""
+        trash = [join(self.out_dir, 'tmp_seq.fasta'), join(self.out_dir, 'tmp_seq.sam'),
+                 join(self.out_dir, 'tmp_seq.sorted.bam'), 
+                 join(self.out_dir, 'tmp_seq.sorted.bam.bai'),
+                 join(self.out_dir, 'chunked_sequences.fasta'),
+                 join(self.out_dir,'reference.fasta')]
+        for item in trash:
+            remove(item)
