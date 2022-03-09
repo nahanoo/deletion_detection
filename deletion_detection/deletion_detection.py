@@ -28,14 +28,17 @@ class Deletion():
         self.genbank = self.parse_genbank()
 
         self.bam = join(self.out_dir, "aligned.sorted.bam")
-        self.deletions = None
-
-        self.annotated = pd.DataFrame(
-            columns=['chromosome', 'position', 'length', 'start', 'end', 'protein'])
-        self.deleted_plasmids = pd.DataFrame(
+        self.ref_deletions = None
+        self.no_coverage = None
+        self.mut_deletions = pd.DataFrame(
             columns=['chromosome', 'position', 'length'])
-        self.deleted_plasmids_annotated = pd.DataFrame(
-            columns=['chromosome', 'position', 'length', 'start', 'end', 'protein'])
+        self.mut_deletions_annotated = pd.DataFrame(
+            columns=['chromosome', 'position', 'length', 'products'])
+
+        self.plasmids = pd.DataFrame(
+            columns=['chromosome', 'position', 'length'])
+        self.plasmids_annotated = pd.DataFrame(
+            columns=['chromosome', 'position', 'length', 'products'])
 
         if not exists(join(self.out_dir, 'plots')):
             mkdir(join(self.out_dir, 'plots'))
@@ -85,29 +88,28 @@ class Deletion():
         with open(target, "w") as handle:
             SeqIO.write(assembly_chunks, handle, "fasta")
 
-    def mapper(self):
+    def mapper(self, reference, reads, out):
         """Maps chunked sequence to all ancesteral genomes
         experiment with minimap2.
         Minimap2 settings are set to accureate PacBio reads."""
-        reads = join(self.out_dir, "chunked_sequences.fasta")
-        sam = join(self.out_dir, "aligned.sam")
         cmd = [
             "minimap2",
             "-ax",
             "asm5",
-            self.reference_fasta,
+            reference,
             reads,
             ">",
-            sam,
+            out,
         ]
+        bam = out.replace('.sam', '.sorted.bam')
         # Calling minimap and surpressing stdout
         call(" ".join(cmd), shell=True, stdout=DEVNULL,
              stderr=STDOUT)
-        cmd = ['samtools', 'sort', '-o', self.bam, sam]
+        cmd = ['samtools', 'sort', '-o', bam, out]
         # Calling samtools and surpressing stdout
         call(" ".join(cmd), shell=True, stdout=DEVNULL,
              stderr=STDOUT)
-        cmd = ['samtools', 'index', self.bam]
+        cmd = ['samtools', 'index', bam]
         # Calling samtools and surpressing stdout
         call(" ".join(cmd), shell=True, stdout=DEVNULL,
              stderr=STDOUT)
@@ -118,25 +120,22 @@ class Deletion():
         df = pd.read_csv(StringIO(process.stdout.decode()), sep='\t')
         df.columns = ['chromosome', 'position', 'coverage']
         df = df[df['coverage'] == 0]
-        self.deletions = self.concat_deletions(df)
-        self.deletions['position'] = self.deletions['position'] - 1
-        mask = []
+        self.ref_deletions = self.concat_deletions(df)
+        self.ref_deletions['position'] = self.ref_deletions['position'] - 1
+        self.no_coverage = self.ref_deletions
         a = pysam.AlignmentFile(self.bam)
-        for c, p, l in zip(self.deletions['chromosome'], self.deletions['position'], self.deletions['length']):
+        mask = []
+        for c, p, l in zip(self.ref_deletions['chromosome'], self.ref_deletions['position'], self.ref_deletions['length']):
             if l == a.get_reference_length(c):
-                self.deleted_plasmids.loc[len(self.deleted_plasmids)] = [c,p,l]
+                self.plasmids.loc[len(self.plasmids)] = [c, p, l]
                 mask.append(False)
             else:
-                reads = []
-                for read in a.fetch(c, p-100, p+l+100):
-                    reads.append(read.qname)
-                deletion_break = self.check_break(reads)
-                if l < 500:
-                    deletion_break = False
-                mask.append(deletion_break)
-        self.deletions = self.deletions[mask]
-        self.deletions.to_csv(
-            join(self.out_dir, 'deletions.tsv'), sep='\t', index=False)
+                mask.append(True)
+        self.ref_deletions = self.ref_deletions[mask]
+        for c, p, l in zip(self.plasmids['chromosome'], self.plasmids['position'], self.plasmids['length']):
+            i = len(self.plasmids_annotated)
+            products = self.annotate_position(c, p, l)
+            self.plasmids_annotated.loc[i] = [c, p, l, products]
 
     def concat_deletions(self, df):
         out = pd.DataFrame(columns=['chromosome', 'position', 'length'])
@@ -153,72 +152,83 @@ class Deletion():
             prev_contig = contig
         return out
 
-    def check_break(self, reads):
-        contigs = ['.'.join(read.split('.')[:-1]) for read in reads]
-        if len(set(contigs)) > 1:
-            return False
-
-        index = sorted([int(read.split('.')[-1]) for read in reads])
-        prev = index[0]
-        for i in index[1:]:
-            if i - 1 == prev:
-                pass
-            else:
-                return False
-            prev += 1
-
-        return True
-
-    def annotate(self):
-        i = 0
-        for counter, row in self.deletions.iterrows():
-            c = row['chromosome']
-            p = row['position']
-            l = row['length']
+    def get_mut_origin(self):
+        reference_contigs = {
+            contig.id: contig for contig in self.reference_contigs}
+        for c, p, l in zip(self.ref_deletions['chromosome'], self.ref_deletions['position'], self.ref_deletions['length']):
             a = pysam.AlignmentFile(self.bam)
-            for read in a.fetch(c, p-1, p):
-                c_mut = '.'.join(read.qname.split('.')[:-1])
-                p_mut = int(read.qname.split('.')[-1]) * self.step + read.qend
-                break
-        
-            for (start, end), product in self.genbank[c].items():
-                if (start >= p) & (end <= p + l):
-                    self.annotated.loc[i] = [
-                        c_mut, p_mut, l, start, end, product]
-                    i += 1
-        self.annotated = self.annotated.drop_duplicates()
-        self.annotated.to_csv(
-            join(self.out_dir, 'deletions.annotated.tsv'), sep='\t', index=False)
+            padding = 2000
+            if p - 2000 < 0:
+                start = 0
+            else:
+                start = p - 2000
+            if p + 2000 > a.get_reference_length(c):
+                end = a.get_reference_length(c)
+            else:
+                end = p + 2000
+            seq = reference_contigs[c][start:p]
+            seq += reference_contigs[c][p+l:end]
+            seq_id = c + '.' + str(p)
+            seq.id = seq_id
+            rel_pos = p - start
+            tmp_seq = join(self.out_dir, 'tmp_seq.fasta')
+            tmp_sam = join(self.out_dir, 'tmp_seq.sam')
+            tmp_bam = tmp_sam.replace('.sam', '.sorted.bam')
+            with open(tmp_seq, 'w') as handle:
+                SeqIO.write(seq, handle, 'fasta')
+            self.mapper(self.mutant_fasta, tmp_seq, tmp_sam)
+            a = pysam.AlignmentFile(tmp_bam)
+            for read in a:
+                if not (read.is_unmapped):
+                    i = len(self.mut_deletions)
+                    self.mut_deletions.loc[i] = [
+                        read.reference_name, read.reference_start + rel_pos, l]
+                products = self.annotate_position(c, p, l)
+                self.mut_deletions_annotated.loc[i] = [
+                    read.reference_name, read.reference_start + rel_pos, l, products]
 
+    def annotate_position(self, c, p, l):
+        products = []
+        for (start, end), product in self.genbank[c].items():
+            if not set(range(start, end)).isdisjoint(range(p, p+l)):
+                products.append(product)
+        return products
 
-        print(self.deleted_plasmids)
+    def format_out(self, df):
+        out = pd.DataFrame(
+            columns=['chromosome', 'position', 'length', 'product'])
         i = 0
-        for counter, row in self.deleted_plasmids.iterrows():
-            c = row['chromosome']
-            p = row['position']
-            l = row['length']
-            for (start, end), product in self.genbank[c].items():
-                if (start >= p) & (end <= p + l):
-                    self.deleted_plasmids_annotated.loc[i] = [
-                        c_mut, p_mut, l, start, end, product]
-                    i += 1
-        self.deleted_plasmids_annotated = self.deleted_plasmids_annotated.drop_duplicates()
-        self.deleted_plasmids_annotated.to_csv(
-            join(self.out_dir, 'deleted_plasmids.annotated.tsv'), sep='\t', index=False)
+        for c, p, l, products in zip(df['chromosome'], df['position'], df['length'], df['products']):
+            for product in products:
+                out.loc[i] = [c, p, l, product]
+                i += 1
+        return out
+
+    def dump(self):
+        self.no_coverage.to_csv(
+            join(self.out_dir, 'no_coverage.tsv'), sep='\t', index=False)
+        self.mut_deletions.to_csv(
+            join(self.out_dir, 'deletions.tsv'), sep='\t', index=False)
+        self.format_out(self.mut_deletions_annotated).to_csv(
+            join(self.out_dir, 'deletions.annotated.tsv'), sep='\t', index=False)
+        self.plasmids.to_csv(
+            join(self.out_dir, 'plasmids.tsv'), sep='\t', index=False)
+        self.format_out(self.plasmids_annotated).to_csv(
+            join(self.out_dir, 'plasmids.annotated.tsv'), sep='\t', index=False)
 
     def plot_deletions(self):
         out = join(self.out_dir, 'plots', 'alignments')
         if not exists(out):
             mkdir(out)
 
-        for chromosome, position in zip(self.deletions['chromosome'], self.deletions['position']):
+        for chromosome, position in zip(self.ref_deletions['chromosome'], self.ref_deletions['position']):
             plot_alignment(self.bam, chromosome, position, out)
 
     def plot_annotation(self):
         out = join(self.out_dir, 'plots', 'annotations')
         if not exists(out):
             mkdir(out)
-        for i, row in self.deletions.iterrows():
+        for i, row in self.ref_deletions.iterrows():
             plot_genbank(
                 self.reference_contigs, row['chromosome'], row['position'],
                 row['position']+row['length'], out)
