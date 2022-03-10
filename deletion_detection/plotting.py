@@ -2,28 +2,28 @@ from dna_features_viewer import GraphicFeature, GraphicRecord
 import pysam
 from os.path import join
 
-def plot_alignment(bam, chromosome, position, out):
+def plot_alignment(bam, chromosome, position, length, window, out):
     """Plots alignment of regions with no coverage in
     reference."""
 
     # Gets correct padding
     a = pysam.AlignmentFile(bam)
-    padding = 50000
+    padding = window
     if position - padding < 0:
         start = 0
     else:
         start = position - padding
 
     ref_length = a.get_reference_length(chromosome)
-    if position + padding > ref_length:
+    if position + length + padding > ref_length:
         end = ref_length
     else:
-        end = position + padding
+        end = position +length + padding
 
     # Gets reads of no coverage regions
     reads = []
     for read in a.fetch(chromosome, start, end):
-        if (not read.is_unmapped):
+        if (not read.is_unmapped) & (not read.is_secondary):
             reads.append(read)
 
     # Creates features for plotting
