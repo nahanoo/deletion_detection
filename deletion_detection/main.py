@@ -5,14 +5,14 @@ from os.path import join
 
 def parse_args():
     parser = argparse.ArgumentParser(
-        description='Detect insertions in evolved bacterial strains.')
+        description='Detect deletions in evolved bacterial strains.')
     parser.add_argument(
         'ancestral', help='fasta file of the ancestral strain'
     )
     parser.add_argument(
         'mutant', help='genbank file of the mutated strain.')
     parser.add_argument('out_dir', help='output directory')
-    parser.add_argument('--plot', help='plots alignment of deletions', action='store_true')
+    parser.add_argument('--plot', help='plots alignment around regions of deletions', action='store_true')
 
     return parser.parse_args()
 
