@@ -18,8 +18,8 @@ class Deletion():
         self.bam = join(self.out_dir, "aligned.sorted.bam")
 
         # Chunk parameters
-        self.step = 10000
-        self.window = 50000
+        self.step = 100
+        self.window = 500
 
         # List contigs
         self.mutant_contigs = [contig for contig in SeqIO.parse(
@@ -262,8 +262,9 @@ class Deletion():
         if not exists(out):
             mkdir(out)
 
-        for chromosome, position in zip(self.deletions['chromosome_origin'], self.deletions['position_origin']):
-            plot_alignment(self.bam, chromosome, position, out)
+        for chromosome, position, length in zip(self.deletions['chromosome_origin'], 
+        self.deletions['position_origin'], self.deletions['length']):
+            plot_alignment(self.bam, chromosome, position, length, self.window, out)
 
     def plot_annotation(self):
         """Plots annotation"""
@@ -280,7 +281,7 @@ class Deletion():
         trash = [join(self.out_dir, 'tmp_seq.fasta'), join(self.out_dir, 'tmp_seq.sam'),
                  join(self.out_dir, 'tmp_seq.sorted.bam'), 
                  join(self.out_dir, 'tmp_seq.sorted.bam.bai'),
-                 join(self.out_dir, 'chunked_sequences.fasta'),
+                 #join(self.out_dir, 'chunked_sequences.fasta'),
                  join(self.out_dir,'reference.fasta')]
         for item in trash:
             remove(item)
