@@ -43,13 +43,13 @@ The optional `--plot` flags plots the alignments around identified deletions.
 
 ## Background
 
-The genome of the mutated strain is chunked into smaller sequences using a sliding window approach. In detail, the genome is chunked into 50000 base-pair chunks with with a start position shift of 10000 base-pairs.
+The genome of the mutated strain is chunked into smaller sequences using a sliding window approach. In detail, the genome is chunked into 500 base-pair chunks with with a start position shift of 100 base-pairs.
 Below you can see the alignment of such chunks against itself:
 ![](pngs/chunks.png)
 The id of the sequence consists of the contig name and the enumerated step count.
 These chunks of the mutated strain are then aligned to the ancestral genome. Below you can see such an alignment at a position with no coverage. This plot is outputted if you add `--plot` flag.
 ![](pngs/example.png)
-As you can see there is a cap in the alignment. At this position the sequence is only present in the ancestral strain and thus deleted in the mutated strain. Because we aligned it to the ancestral genome we only know the position relative to the ancestral genome.  
+As you can see there is a gap in the alignment. At this position the sequence is only present in the ancestral strain and thus deleted in the mutated strain. Because we aligned it to the ancestral genome we only know the position relative to the ancestral genome.  
 In order to find the position in the genome of the mutant, the sequence of the ancestral genome around additional present sequence is extracted with 2000 flanking base-pairs. This extracted sequence is aligned to the mutant strain and based on this alignment the position in the mutant genome is identified.
 
 ## Outputs
