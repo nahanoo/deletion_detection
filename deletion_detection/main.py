@@ -1,5 +1,5 @@
 import argparse
-from deletion_detection import Deletion
+from .deletion_detection import Deletion
 from os.path import join
 
 
@@ -7,12 +7,12 @@ def parse_args():
     parser = argparse.ArgumentParser(
         description='Detect deletions in evolved bacterial strains.')
     parser.add_argument(
-        'ancestral', help='fasta file of the ancestral strain'
-    )
+        'mutant', help='fasta file of the mutated strain.')
     parser.add_argument(
-        'mutant', help='genbank file of the mutated strain.')
+        'ancestral', help='genbank file of the ancestor'
+    )
     parser.add_argument('out_dir', help='output directory')
-    parser.add_argument('--plot', help='plots alignment around regions of deletions', action='store_true')
+    parser.add_argument('--plot', help='plot alignments and annotations', action='store_true')
 
     return parser.parse_args()
 
@@ -39,5 +39,3 @@ def main():
         d.plot_annotation()
     # Cleans temporary files
     d.clean()
-
-main()
