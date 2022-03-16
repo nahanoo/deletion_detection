@@ -1,8 +1,8 @@
-from setuptools import setup, find_packages
+from setuptools import setup
 
 setup(name='deletion_detection',
       version='1.0',
-      description='Detects deletions in BAM files derived from haploid genomes.',
+      description='Detects deletions from assemblies of evolved bacteria.',
       author='Eric Ulrich',
       url='https://github.com/nahanoo/deletion_detection',
       packages=['deletion_detection'],
