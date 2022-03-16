@@ -3,6 +3,7 @@ from os import mkdir, remove
 from io import StringIO
 from subprocess import call, run as r, DEVNULL, STDOUT
 from Bio import SeqIO
+from Bio.SeqRecord import SeqRecord
 import pandas as pd
 from .plotting import plot_alignment, plot_genbank
 import pysam
@@ -46,6 +47,10 @@ class Deletion():
         self.plasmids_annotated = pd.DataFrame(
             columns=['chromosome', 'position', 'length', 'products'])
 
+        # List storing files paths to trash
+        self.trash = []
+        self.trash.append(self.reference_fasta)
+
         # Create plot directory
         if not exists(join(self.out_dir, 'plots')):
             mkdir(join(self.out_dir, 'plots'))
@@ -77,9 +82,10 @@ class Deletion():
         for counter, q in enumerate(range(0, seqlen, step)):
             # Returns ether entire sequence or window depending on sequence length
             j = seqlen if q + window_size > seqlen else q + window_size
-            chunk = seq[q:j]
+            chunk_id = seq.id
+            chunk_seq = seq.seq[q:j]
             # Add chunk id to sequence id
-            chunk.id = chunk.id + "." + str(counter)
+            chunk = SeqRecord(seq=chunk_seq,id=chunk_id + "." + str(counter))
             seqs.append(chunk)
             if j == seqlen:
                 break
@@ -92,11 +98,13 @@ class Deletion():
         for contig in self.mutant_contigs:
             # Creates chunks of every contig
             assembly_chunks += self.chunker(contig, self.window, self.step)
-        target = join(self.out_dir,
+        self.chunks = join(self.out_dir,
                       "chunked_sequences.fasta")
         # Dumps chunks to fasta
-        with open(target, "w") as handle:
+        with open(self.chunks, "w") as handle:
             SeqIO.write(assembly_chunks, handle, "fasta")
+        # Delete chunked sequence
+        self.trash.append(self.chunks)
 
     def mapper(self, reference, reads, out):
         """Maps long accurate sequences to references with minimap2."""
@@ -121,6 +129,11 @@ class Deletion():
         # Calling samtools and surpressing stdout
         call(" ".join(cmd), shell=True, stdout=DEVNULL,
              stderr=STDOUT)
+        # Files to trash
+        if out not in self.trash:
+            self.trash.append(out)
+            self.trash.append(bam)
+            self.trash.append(bam+'.bai')
 
     def map_chunks(self):
         """Maps chunked sequences to reference"""
@@ -214,6 +227,8 @@ class Deletion():
                         read.reference_name, read.reference_start + rel_pos, l, c, p]
                     i += 1
         self.deletions = deletions
+        # Deleting tmp_seq
+        self.trash.append(tmp_seq)
 
     def annotate(self):
         """Annotates the dataframes of deleted plasmids and
@@ -278,10 +293,5 @@ class Deletion():
 
     def clean(self):
         """Deletes temporary files."""
-        trash = [join(self.out_dir, 'tmp_seq.fasta'), join(self.out_dir, 'tmp_seq.sam'),
-                 join(self.out_dir, 'tmp_seq.sorted.bam'), 
-                 join(self.out_dir, 'tmp_seq.sorted.bam.bai'),
-                 #join(self.out_dir, 'chunked_sequences.fasta'),
-                 join(self.out_dir,'reference.fasta')]
-        for item in trash:
+        for item in self.trash:
             remove(item)
